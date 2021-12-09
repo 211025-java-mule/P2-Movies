@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:db="http://www.mulesoft.org/schema/mule/db" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd">
+	<http:listener-config name="HTTP_Listener_config" doc:name="HTTP Listener config" doc:id="e9c0b5ef-150b-4693-a694-20e1c9bbb783" >
+		<http:listener-connection host="0.0.0.0" port="8081" />
+	</http:listener-config>
+	<http:request-config name="HTTP_Request_configuration" doc:name="HTTP Request configuration" doc:id="dbfa5841-24df-4619-b228-ac2476319bee" >
+		<http:request-connection host="imdb-api.com"/>
+	</http:request-config>
+	<http:request-config name="HTTP_Request_configuration1" doc:name="HTTP Request configuration" doc:id="cc2e881d-ca8b-4819-911d-c273879808ad" >
+		<http:request-connection host="imdb-api.com" />
+	</http:request-config>
+	<http:request-config name="HTTP_Request_configuration2" doc:name="HTTP Request configuration" doc:id="62c27cc1-f251-4879-bc0d-b728fcdae5dd" >
+		<http:request-connection host="imdb-api.com" />
+	</http:request-config>
+	<flow name="mymovies-rest-api-mule-appFlow" doc:id="f5fb0e63-a88a-42af-a7aa-55e3627749c9" >
+		<http:listener doc:name="GET /movies" doc:id="2c4b4d50-9a22-4a78-9536-167e68239330" config-ref="HTTP_Listener_config" path="/movies"/>
+		<http:request method="GET" doc:name="IMDB top250 request" doc:id="20a51fc5-459f-4605-b157-1974860187f3" config-ref="HTTP_Request_configuration" url="https://imdb-api.com/en/API/Top250Movies/k_21xe62oi"/>
+		<flow-ref doc:name="Call addPlot" doc:id="3ad26e27-82c5-4ce8-b2c8-19b4fb9eed05" name="addPlot"/>
+		<ee:transform doc:name="Change output to JSON" doc:id="2eb27d35-6092-4e56-b740-76d8802de30c" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+	<sub-flow name="addPlot" doc:id="3320d4e7-d549-42c1-8919-9e408c30c707" >
+		<ee:transform doc:name="Transform Message" doc:id="96d22acd-9161-4333-9f6e-664ab769275b">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/java
+---
+payload[0]]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<set-variable value="#[[]]" doc:name="Init new list" doc:id="2772c321-797e-4a5e-a908-54c2e277b7d6" variableName="newList" />
+		<foreach doc:name="For Each" doc:id="d4617fe4-9f79-4e69-8e99-08e377d70b4b" collection="#[payload]">
+			<choice doc:name="Choice" doc:id="70568414-0c02-449a-acd8-b9d176f3b2df">
+				<when expression="#[vars.counter &lt; 3]">
+					<set-variable value="#[message.payload]" doc:name="Set payload as var" doc:id="a87a1a14-6b04-4a39-89c3-e852dec474f4" variableName="top250" />
+					<set-variable value="#[message.payload.id]" doc:name="Set ID" doc:id="77bf8df9-af3a-4b69-9337-437b5ffe7ea2" variableName="id" />
+					<http:request method="GET" doc:name="IMDb plot request" doc:id="1b09014d-10fd-416a-93f0-98cde7640c3b" config-ref="HTTP_Request_configuration2" path="#['/en/API/Title/k_21xe62oi/' ++  vars.id]" />
+					<set-variable value="#[message.payload.plot]" doc:name="Set Plot" doc:id="610ff4fe-a6cf-45bc-aa86-f87869404c2b" variableName="plot" />
+					<ee:transform doc:name="Add Plot to Movie" doc:id="939a3e5f-2a53-47b6-b30b-205e38b97f87">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+//import * from dw::Runtime
+output application/json
+
+var object1 = vars.top250
+var object2 = {
+	plot: vars.plot
+}
+
+---
+object1 ++ object2 
+//wait 1000]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+					<ee:transform doc:name="Add Movie to newList" doc:id="667afb8f-9827-4528-9d96-04176e703376">
+						<ee:message>
+						</ee:message>
+						<ee:variables>
+							<ee:set-variable variableName="newList"><![CDATA[%dw 2.0
+output application/java
+---
+vars.newList + payload]]></ee:set-variable>
+						</ee:variables>
+					</ee:transform>
+				</when>
+			</choice>
+		</foreach>
+		<logger level="INFO" doc:name="Log newList" doc:id="5b33dfd8-e075-4f4b-a8a0-7063c33d874d" message="#[vars.newList]" />
+		<ee:transform doc:name="Change output to newList" doc:id="8107ef56-51cb-4c6f-9401-314dcd6d2221">
+				<ee:message>
+					<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+vars.newList]]></ee:set-payload>
+				</ee:message>
+			</ee:transform>
+	</sub-flow>
+</mule>
